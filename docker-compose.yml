@@ -1,0 +1,148 @@
+#version: '3.7'
+
+services:
+  # Zabbix Server
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:alpine-6.0-latest
+    container_name: zabbix-server
+    env_file:
+      - .env
+    environment:
+      - TZ=${TIMEZONE}
+      - DB_SERVER_HOST=${ZBX_DB_HOST}
+      - MYSQL_DATABASE=${ZBX_DB_NAME}
+      - MYSQL_USER=${ZBX_DB_USER}
+      - MYSQL_PASSWORD=${ZBX_DB_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./zabbix/zabbix_server.conf:/etc/zabbix/zabbix_server.conf
+      - zabbix_data:/usr/lib/zabbix
+    ports:
+      - "10051:10051"
+    depends_on:
+      - zabbix-mysql
+    networks:
+      - zbx_net
+      - elk_net
+
+  # Zabbix Web Interface
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-mysql:alpine-6.0-latest
+    container_name: zabbix-web
+    env_file:
+      - .env
+    environment:
+      - TZ=${TIMEZONE}
+      - ZBX_SERVER_HOST=${ZBX_SERVER_HOST}
+      - DB_SERVER_HOST=${ZBX_DB_HOST}
+      - MYSQL_DATABASE=${ZBX_DB_NAME}
+      - MYSQL_USER=${ZBX_DB_USER}
+      - MYSQL_PASSWORD=${ZBX_DB_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - zabbix-server
+      - zabbix-mysql
+    networks:
+      - zbx_net
+
+  # MySQL para Zabbix
+  zabbix-mysql:
+    image: mysql:8.0
+    container_name: zabbix-mysql
+    env_file:
+      - .env
+    environment:
+      - MYSQL_DATABASE=${ZBX_DB_NAME}
+      - MYSQL_USER=${ZBX_DB_USER}
+      - MYSQL_PASSWORD=${ZBX_DB_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - zabbix_mysql_data:/var/lib/mysql
+    networks:
+      - zbx_net
+
+  # Zabbix Agent (para monitorar o host)
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:alpine-6.0-latest
+    container_name: zabbix-agent
+    env_file:
+      - .env
+    environment:
+      - TZ=${TIMEZONE}
+      - ZBX_HOSTNAME=zabbix-agent
+      - ZBX_SERVER_HOST=${ZBX_SERVER_HOST}
+    ports:
+      - "10050:10050"
+    privileged: true
+    pid: host
+    networks:
+      - zbx_net
+
+  # ELK Stack
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    container_name: elasticsearch
+    env_file:
+      - .env
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elk_net
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.10.2
+    container_name: logstash
+    env_file:
+      - .env
+    volumes:
+      - ./elk/logstash/:/usr/share/logstash/pipeline/
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5044:5044"
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    networks:
+      - elk_net
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.2
+    container_name: kibana
+    env_file:
+      - .env
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+    networks:
+      - elk_net
+
+volumes:
+  zabbix_data:
+  zabbix_mysql_data:
+  es_data:
+
+networks:
+  zbx_net:
+    driver: bridge
+  elk_net:
+    driver: bridge
