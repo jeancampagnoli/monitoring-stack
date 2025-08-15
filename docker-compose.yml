@@ -16,7 +16,6 @@ services:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
     volumes:
       - ./zabbix/zabbix_server.conf:/etc/zabbix/zabbix_server.conf
-      - zabbix_data:/usr/lib/zabbix
     ports:
       - "10051:10051"
     depends_on:
@@ -128,7 +127,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - ELASTICSEARCH_PASSWORD=MeX-J1Yll0Tj3wTNKI22
     depends_on:
       - elasticsearch
     ports:
